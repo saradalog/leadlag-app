@@ -69,7 +69,8 @@ nav.tabs a:focus-visible,button:focus-visible,input:focus-visible,select:focus-v
 .tile .sub{font-size:12px;color:var(--muted)}
 .meter{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
 .meter i{display:block;height:100%;background:var(--ok)}
-.tbl{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13.5px}
+.tbl{overflow-x:auto}
+table.tight th,table.tight td{padding:6px 4px;font-size:13px} table{border-collapse:collapse;width:100%;font-size:13.5px}
 th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 th{color:var(--muted);font-weight:500;font-size:12px} td:first-child,th:first-child{text-align:left}
 .btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:var(--surface);border-radius:8px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
@@ -103,6 +104,9 @@ html{color-scheme:light}
 body{margin:0;-webkit-text-size-adjust:100%}
 .wrap{padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
 .cfg{display:grid;gap:10px}
+.sgn{display:flex;gap:6px}
+.sb{flex:0 0 52px;font:inherit;font-size:20px;font-weight:700;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--plus);cursor:pointer}
+.sb.neg{color:var(--minus);border-color:var(--minus);background:var(--bad-soft)}
 </style>
 </head><body>
 
@@ -158,8 +162,8 @@ body{margin:0;-webkit-text-size-adjust:100%}
       <h2>実際の損益を入力</h2>
       <form id="form" class="row" novalidate>
         <label class="f">日付<input id="fDate" type="date" required></label>
-        <label class="f">SBI（円）<input id="fSbi" class="num" type="number" step="1" inputmode="numeric" placeholder="例 12800"></label>
-        <label class="f">楽天（円）<input id="fRak" class="num" type="number" step="1" inputmode="numeric" placeholder="例 -5700"></label>
+        <label class="f">SBI（円）<span class="sgn"><button type="button" class="sb" data-for="fSbi" aria-label="SBIのプラス・マイナスを切り替える">＋</button><input id="fSbi" class="num" type="text" inputmode="numeric" autocomplete="off" placeholder="例 12800"></span></label>
+        <label class="f">楽天（円）<span class="sgn"><button type="button" class="sb" data-for="fRak" aria-label="楽天のプラス・マイナスを切り替える">＋</button><input id="fRak" class="num" type="text" inputmode="numeric" autocomplete="off" placeholder="例 5700"></span></label>
         <div style="flex-basis:100%"></div>
         <button class="btn" type="submit" id="fGo">内容を確認する</button>
       </form>
@@ -424,7 +428,7 @@ function renderResults(act,cmp,health){
   const rec=days.slice().reverse();
   $('#dailyTbl').innerHTML='<table><thead><tr><th>日付</th><th>SBI</th><th>楽天</th><th>合計</th><th>累計</th></tr></thead><tbody>'+
     rec.map((d,i)=>'<tr><td>'+esc(d.label)+(d.ex?' <span class="pill warn">除外</span>':'')+'</td><td class="num '+cls(d.sbi)+'">'+(isFinite(d.sbi)?yen(d.sbi):'')+'</td><td class="num '+cls(d.rak)+'">'+(isFinite(d.rak)?yen(d.rak):'')+'</td><td class="num '+cls(d.total)+'">'+yen(d.total)+'</td><td class="num '+cls(cv[cv.length-1-i])+'">'+yen(cv[cv.length-1-i])+'</td></tr>').join('')+'</tbody></table>';
-  $('#recentTbl').innerHTML='<table><thead><tr><th>日付</th><th>SBI</th><th>楽天</th><th>合計</th></tr></thead><tbody>'+
+  $('#recentTbl').innerHTML='<table class="tight"><thead><tr><th>日付</th><th>SBI</th><th>楽天</th><th>合計</th></tr></thead><tbody>'+
     rec.slice(0,8).map(d=>'<tr><td>'+esc(d.label)+'</td><td class="num">'+(isFinite(d.sbi)?yen(d.sbi):'')+'</td><td class="num">'+(isFinite(d.rak)?yen(d.rak):'')+'</td><td class="num '+cls(d.total)+'">'+yen(d.total)+'</td></tr>').join('')+'</tbody></table>';
 }
 
@@ -444,13 +448,25 @@ function renderModels(prod,pca,ols){
 
 /* ---------- 入力 ---------- */
 $('#fDate').value=jstToday();
+document.querySelectorAll('.sb').forEach(b=>b.addEventListener('click',()=>{const neg=!b.classList.contains('neg');b.classList.toggle('neg',neg);b.textContent=neg?'−':'＋';}));
+function readYen(id){
+  let v=$('#'+id).value.trim().replace(/[,，円\s]/g,'').replace(/[−ー－‐]/g,'-').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  if(v==='') return null;
+  let neg=v.startsWith('-'); v=v.replace(/^[-+]/,'');
+  if(!/^\d+$/.test(v)) return NaN;
+  const btn=document.querySelector('.sb[data-for="'+id+'"]');
+  if(btn&&btn.classList.contains('neg')) neg=!neg;
+  return (neg?-1:1)*Number(v);
+}
+function resetSigns(){document.querySelectorAll('.sb').forEach(b=>{b.classList.remove('neg');b.textContent='＋'})}
 let pending=null;
 $('#form').addEventListener('submit',e=>{
   e.preventDefault(); $('#fMsg').innerHTML='';
-  const d=$('#fDate').value, s=$('#fSbi').value.trim(), r=$('#fRak').value.trim();
+  const d=$('#fDate').value, s=readYen('fSbi'), r=readYen('fRak');
   if(!d){$('#fMsg').innerHTML='<div class="notice bad">日付を入れてください。</div>';return}
-  if(s===''&&r===''){$('#fMsg').innerHTML='<div class="notice bad">SBIか楽天の、少なくとも片方の金額を入れてください。</div>';return}
-  const [Y,M,D]=d.split('-').map(Number); pending={iso:d,label:M+'/'+D,sbi:s===''?null:Number(s),rak:r===''?null:Number(r)};
+  if(s===null&&r===null){$('#fMsg').innerHTML='<div class="notice bad">SBIか楽天の、少なくとも片方の金額を入れてください。</div>';return}
+  if(Number.isNaN(s)||Number.isNaN(r)){$('#fMsg').innerHTML='<div class="notice bad">金額は数字だけで入れてください（例 12800）。マイナスは左のボタンで切り替えます。</div>';return}
+  const [Y,M,D]=d.split('-').map(Number); pending={iso:d,label:M+'/'+D,sbi:s,rak:r};
   const tot=(pending.sbi||0)+(pending.rak||0);
   $('#confirm').hidden=false;
   $('#confirm').innerHTML='<div class="notice info" style="margin-top:10px"><b>'+esc(pending.label)+'</b> に書き込みます：SBI '+(pending.sbi==null?'（変更なし）':yen(pending.sbi))+' ／ 楽天 '+(pending.rak==null?'（変更なし）':yen(pending.rak))+'（合計 '+yen(tot)+'）'+
@@ -463,7 +479,7 @@ async function doWrite(){
   try{
     const row=(await api('writeActual',{label:pending.label,iso:pending.iso,sbi:pending.sbi,rak:pending.rak})).row;
     $('#fMsg').innerHTML='<div class="notice ok" style="margin-top:10px">'+esc(pending.label)+' を'+row+'行目に書き込みました。</div>';
-    $('#confirm').hidden=true; pending=null; $('#fSbi').value=''; $('#fRak').value='';
+    $('#confirm').hidden=true; pending=null; $('#fSbi').value=''; $('#fRak').value=''; resetSigns();
     loadAll(true);
   }catch(e){
     $('#fMsg').innerHTML='<div class="notice bad" style="margin-top:10px">書き込めませんでした。'+errText(e)+(e&&(e.code==='network'||e.code==='timeout')?'（書き込めたか分からないので、「最近の入力」を確かめてから押し直してください）':'')+'</div>';
